@@ -39,6 +39,17 @@
         .response {
             margin-top: 20px;
         }
+        .indicator {
+            padding: 10px;
+            color: white;
+            font-weight: bold;
+        }
+        .ac-on {
+            background-color: #28a745; /* Green */
+        }
+        .ac-off {
+            background-color: #dc3545; /* Red */
+        }
     </style>
 </head>
 <body>
@@ -55,70 +66,164 @@
     </div>
 
     <div class="form-group">
-        <label for="temperature-adjustment">Adjust Temperature (°C):</label>
+        <label>Adjust Temperature (°C):</label>
         <button onclick="adjustTemperature(1)">Increase</button>
         <button onclick="adjustTemperature(-1)">Decrease</button>
     </div>
 
     <div class="form-group">
-        <label for="fan-speed">Set Fan Speed:</label>
+        <label>Set Fan Speed:</label>
         <button onclick="setFanSpeed('low')">Low</button>
         <button onclick="setFanSpeed('medium')">Medium</button>
         <button onclick="setFanSpeed('high')">High</button>
     </div>
 
+    <div class="form-group">
+        <label>AC Status:</label>
+        <div id="ac-status" class="indicator ac-off">AC Off</div>
+    </div>
+
+    <div class="form-group">
+        <button onclick="toggleAC()">Toggle AC</button>
+    </div>
+
     <div class="response" id="response"></div>
 
     <script>
-        const apiUrl = 'http://<Raspberry_Pi_IP>:5000';
+        const apiUrl = 'http://127.0.0.1:5000';
+        let currentACStatus = 'Off'; // Keep track of the current AC status
 
         async function getTemperature() {
-            const response = await fetch(`${apiUrl}/temperature`);
-            const data = await response.json();
-            document.getElementById('current-temperature').value = data.current_temperature;
+            try {
+                const response = await fetch(`${apiUrl}/temperature`);
+                const data = await response.json();
+                document.getElementById('current-temperature').value = data.current_temperature;
+
+                // Automatically control the AC based on the temperature
+                if (data.current_temperature > 25 && currentACStatus === 'Off') {
+                    await toggleAC(true);
+                } else if (data.current_temperature < 20 && currentACStatus === 'On') {
+                    await toggleAC(false);
+                }
+            } catch (error) {
+                console.error('Error fetching temperature:', error);
+            }
         }
 
         async function getFanSpeed() {
-            const response = await fetch(`${apiUrl}/fan_speed`);
-            const data = await response.json();
-            document.getElementById('current-fan-speed').value = data.fan_speed;
+            try {
+                const response = await fetch(`${apiUrl}/fan_speed`);
+                const data = await response.json();
+                document.getElementById('current-fan-speed').value = data.fan_speed;
+            } catch (error) {
+                console.error('Error fetching fan speed:', error);
+            }
         }
 
-        async function adjustTemperature(amount) {
-            const currentTemperature = parseFloat(document.getElementById('current-temperature').value) + amount;
+        async function getACStatus() {
+            try {
+                const response = await fetch(`${apiUrl}/ac_status`);
+                const data = await response.json();
+                currentACStatus = data.ac_status; // Update the local status
+                const acStatusElement = document.getElementById('ac-status');
 
-            const response = await fetch(`${apiUrl}/update_temperature`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    temperature: currentTemperature
-                })
-            });
-            const data = await response.json();
-            document.getElementById('response').innerText = data.message;
-            getTemperature();
+                if (currentACStatus === 'On') {
+                    acStatusElement.textContent = 'AC On';
+                    acStatusElement.classList.remove('ac-off');
+                    acStatusElement.classList.add('ac-on');
+                } else {
+                    acStatusElement.textContent = 'AC Off';
+                    acStatusElement.classList.remove('ac-on');
+                    acStatusElement.classList.add('ac-off');
+                }
+            } catch (error) {
+                console.error('Error fetching AC status:', error);
+            }
         }
+
+async function adjustTemperature(amount) {
+    try {
+        let currentTemperature = parseFloat(document.getElementById('current-temperature').value);
+        const newTemperature = currentTemperature + amount;
+
+        // Restrict the temperature range to 16°C - 32°C
+        if (newTemperature < 16) {
+            document.getElementById('response').innerText = 'Temperature cannot go below 16°C.';
+            return;
+        }
+        if (newTemperature > 32) {
+            document.getElementById('response').innerText = 'Temperature cannot go above 32°C.';
+            return;
+        }
+
+        const response = await fetch(`${apiUrl}/update_temperature`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                temperature: newTemperature
+            })
+        });
+        const data = await response.json();
+        document.getElementById('response').innerText = data.message;
+        getTemperature();
+    } catch (error) {
+        console.error('Error adjusting temperature:', error);
+    }
+}
+
 
         async function setFanSpeed(speed) {
-            const response = await fetch(`${apiUrl}/set_fan_speed`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    fan_speed: speed
-                })
-            });
-            const data = await response.json();
-            document.getElementById('response').innerText = data.message;
+            try {
+                const response = await fetch(`${apiUrl}/set_fan_speed`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fan_speed: speed
+                    })
+                });
+                const data = await response.json();
+                document.getElementById('response').innerText = data.message;
+                getFanSpeed();
+            } catch (error) {
+                console.error('Error setting fan speed:', error);
+            }
+        }
+
+        async function toggleAC(turnOn = null) {
+            try {
+                const response = await fetch(`${apiUrl}/toggle_ac`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ turn_on: turnOn })
+                });
+                const data = await response.json();
+                currentACStatus = data.ac_status; // Update the local status
+                document.getElementById('response').innerText = `AC Status: ${data.ac_status}`;
+                getACStatus();
+            } catch (error) {
+                console.error('Error toggling AC:', error);
+            }
+        }
+
+        function startPolling() {
+            getTemperature();
             getFanSpeed();
+            getACStatus();
+            setInterval(() => {
+                getTemperature();
+                getFanSpeed();
+                getACStatus();
+            }, 2000); // Poll every 2 seconds
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            getTemperature();
-            getFanSpeed();
+            startPolling();
         });
     </script>
 </body>
