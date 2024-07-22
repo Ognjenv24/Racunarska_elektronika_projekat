@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home Climate Control</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Smart Home Climate Control</h1>
+
+    <div class="form-group">
+        <label for="current-temperature">Current Temperature (°C):</label>
+        <input type="text" id="current-temperature" disabled>
+    </div>
+
+    <div class="form-group">
+        <label for="current-fan-speed">Current Fan Speed:</label>
+        <input type="text" id="current-fan-speed" disabled>
+    </div>
+
+    <div class="form-group">
+        <label for="temperature-adjustment">Adjust Temperature (°C):</label>
+        <button onclick="adjustTemperature(1)">Increase</button>
+        <button onclick="adjustTemperature(-1)">Decrease</button>
+    </div>
+
+    <div class="form-group">
+        <label for="fan-speed">Set Fan Speed:</label>
+        <button onclick="setFanSpeed('low')">Low</button>
+        <button onclick="setFanSpeed('medium')">Medium</button>
+        <button onclick="setFanSpeed('high')">High</button>
+    </div>
+
+    <div class="response" id="response"></div>
+
+    <script>
+        const apiUrl = 'http://<Raspberry_Pi_IP>:5000';
+
+        async function getTemperature() {
+            const response = await fetch(`${apiUrl}/temperature`);
+            const data = await response.json();
+            document.getElementById('current-temperature').value = data.current_temperature;
+        }
+
+        async function getFanSpeed() {
+            const response = await fetch(`${apiUrl}/fan_speed`);
+            const data = await response.json();
+            document.getElementById('current-fan-speed').value = data.fan_speed;
+        }
+
+        async function adjustTemperature(amount) {
+            const currentTemperature = parseFloat(document.getElementById('current-temperature').value) + amount;
+
+            const response = await fetch(`${apiUrl}/update_temperature`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    temperature: currentTemperature
+                })
+            });
+            const data = await response.json();
+            document.getElementById('response').innerText = data.message;
+            getTemperature();
+        }
+
+        async function setFanSpeed(speed) {
+            const response = await fetch(`${apiUrl}/set_fan_speed`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    fan_speed: speed
+                })
+            });
+            const data = await response.json();
+            document.getElementById('response').innerText = data.message;
+            getFanSpeed();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            getTemperature();
+            getFanSpeed();
+        });
+    </script>
+</body>
+</html>
