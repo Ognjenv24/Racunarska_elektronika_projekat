@@ -1,0 +1,97 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import wiringpi
+import time
+import Adafruit_DHT  # Library for DHT sensor
+
+# Setup Flask app
+app = Flask(__name__)
+CORS(app)  # Allow CORS for all origins
+
+# Constants for LCD
+LCD_RS = 3
+LCD_EN = 14
+LCD_D0 = 4
+LCD_D1 = 12
+LCD_D2 = 13
+LCD_D3 = 6
+
+# Setup wiringPi and LCD
+wiringpi.wiringPiSetup()
+lcd_h = wiringpi.lcdInit(2, 16, 4, LCD_RS, LCD_EN, LCD_D0, LCD_D1, LCD_D2, LCD_D3)
+
+# Constants for GPIO
+diode_pins = [25, 26, 27, 28]  # Replace with your actual wiringPi pin numbers
+for pin in diode_pins:
+    wiringpi.pinMode(pin, 1)  # Set pins to OUTPUT mode
+
+# Constants for DHT sensor
+DHT_SENSOR = Adafruit_DHT.DHT22
+DHT_PIN = 4  # GPIO pin connected to the DHT sensor
+
+# Sample data
+data = {
+    "temperature": 20.0,
+    "fan_speed": "medium",
+    "ac_status": "Off"
+}
+
+def update_lcd():
+    ac_status = f"AC is: {data['ac_status']}"
+    temp_reading = f"Temp: {data['temperature']}C"
+    wiringpi.lcdClear(lcd_h)
+    wiringpi.lcdPosition(lcd_h, 0, 0)
+    wiringpi.lcdPrintf(lcd_h, ac_status)
+    wiringpi.lcdPosition(lcd_h, 0, 1)
+    wiringpi.lcdPrintf(lcd_h, temp_reading)
+
+@app.route('/temperature', methods=['GET'])
+def get_temperature():
+    return jsonify({"current_temperature": data["temperature"]})
+
+@app.route('/update_temperature', methods=['POST'])
+def update_temperature():
+    content = request.json
+    data["temperature"] = content.get("temperature", data["temperature"])
+    update_lcd()
+    return jsonify({"status": "success", "message": "Temperature updated"})
+
+@app.route('/fan_speed', methods=['GET'])
+def get_fan_speed():
+    return jsonify({"fan_speed": data["fan_speed"]})
+
+@app.route('/set_fan_speed', methods=['POST'])
+def set_fan_speed():
+    content = request.json
+    data["fan_speed"] = content.get("fan_speed", data["fan_speed"])
+    return jsonify({"status": "success", "message": "Fan speed set"})
+
+@app.route('/ac_status', methods=['GET'])
+def get_ac_status():
+    return jsonify({"ac_status": data["ac_status"]})
+
+@app.route('/toggle_ac', methods=['POST'])
+def toggle_ac():
+    data["ac_status"] = "On" if data["ac_status"] == "Off" else "Off"
+    for pin in diode_pins:
+        wiringpi.digitalWrite(pin, 1 if data["ac_status"] == "On" else 0)
+    update_lcd()
+    return jsonify({"status": "success", "ac_status": data["ac_status"]})
+
+@app.route('/sensor_readout', methods=['GET'])
+def sensor_readout():
+    humidity, temperature = Adafruit_DHT.read_retry(DHT_SENSOR, DHT_PIN)
+    if temperature is not None:
+        data["temperature"] = temperature
+        update_lcd()
+        return jsonify({"temperature": temperature, "humidity": humidity})
+    else:
+        return jsonify({"error": "Failed to read sensor data"}), 500
+
+if __name__ == '__main__':
+    try:
+        app.run(debug=True)
+    finally:
+        for pin in diode_pins:
+            wiringpi.digitalWrite(pin, 0)  # Ensure all pins are turned off on exit
+        wiringpi.lcdClear(lcd_h)  # Clear the LCD screen on exit
